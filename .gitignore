@@ -28,3 +28,14 @@ Thumbs.db
 # Database files
 *.sqlite
 *.sqlite3
+
+# Sensitive data
+.env
+ngrok.yml
+*.token
+*.auth
+
+# System files
+.DS_Store
+node_modules/
+docker-data/
