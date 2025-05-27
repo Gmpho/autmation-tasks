@@ -98,6 +98,14 @@ docker-compose up -d
 - Use HTTPS connections
 - Rotate access tokens regularly
 
+## ⚠️ Important Disclaimers
+
+- **Use Your Own Credentials**: This project requires your own Instagram API tokens, Claude API keys, and ngrok account
+- **Separate Instances**: Each installation runs independently - your setup won't affect others and vice versa
+- **Compliance**: Ensure your usage complies with Instagram's Terms of Service and API guidelines
+- **Rate Limits**: Be mindful of Instagram API rate limits to avoid account restrictions
+- **Testing**: Test thoroughly in a development environment before using with production accounts
+
 ## Contributing
 
 1. Fork repository
