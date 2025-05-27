@@ -1,0 +1,23 @@
+version: '3'
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: insta_automation
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+    environment:
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_COMMUNITY_PACKAGES_ENABLED=true
+      - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - INSTAGRAM_ACCESS_TOKEN=${INSTAGRAM_ACCESS_TOKEN}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - N8N_TRUST_PROXY_HEADER=true
+      - N8N_SECURITY_CONTENTS_CSRF=true
+      - N8N_RUNNERS_ENABLED=true

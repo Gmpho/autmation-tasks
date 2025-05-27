@@ -1,0 +1,30 @@
+# Version control
+.git
+.gitignore
+
+# Environment variables
+.env
+
+# Ngrok
+ngrok*
+
+# n8n data (since we're mounting it as a volume)
+n8n-data/
+
+# Node modules (if any)
+node_modules/
+
+# IDE/Editor files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+LICENSE

@@ -1,0 +1,30 @@
+# Environment variables
+.env
+
+# n8n data directory
+n8n-data/
+
+# Ngrok
+ngrok.exe
+*.log
+
+# Node modules (if any)
+node_modules/
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Binary files
+*.zip
+*.exe
+
+# Database files
+*.sqlite
+*.sqlite3
