@@ -1,0 +1,147 @@
+version: '3.8'
+
+services:
+  # n8n Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: instagram_automation_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Basic Configuration
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_HOST=${N8N_HOST:-0.0.0.0}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      
+      # External Access Configuration
+      - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      
+      # API Keys for Integrations
+      - INSTAGRAM_ACCESS_TOKEN=${INSTAGRAM_ACCESS_TOKEN}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # MCP Configuration
+      - MCP_BASE_URL=http://mock-api:8000
+      - MOCK_MODE=${MOCK_MODE:-true}
+      
+      # Cloud-specific settings
+      - N8N_METRICS=true
+      - N8N_LOG_LEVEL=${N8N_LOG_LEVEL:-info}
+      - N8N_LOG_OUTPUT=${N8N_LOG_OUTPUT:-console}
+      
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - instagram_automation
+    depends_on:
+      - mock-api
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Mock API Server with MCP Integration
+  mock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock-api
+    container_name: instagram_automation_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # API Configuration
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_DEBUG=${FLASK_DEBUG:-false}
+      - MOCK_MODE=${MOCK_MODE:-true}
+      
+      # AI API Keys (for production mode)
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      
+      # MCP Configuration
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://localhost:9000}
+      
+    volumes:
+      - api_data:/app/data
+      - ./templates:/app/templates:ro
+    networks:
+      - instagram_automation
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Ngrok for External Access
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: instagram_automation_ngrok
+    restart: unless-stopped
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      - NGROK_CONFIG=/etc/ngrok.yml
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml:ro
+    networks:
+      - instagram_automation
+    depends_on:
+      - n8n
+      - mock-api
+    ports:
+      - "4040:4040"  # Ngrok web interface
+
+  # Redis for Caching (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: instagram_automation_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - instagram_automation
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring with Uptime Kuma (Optional)
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: instagram_automation_monitor
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime_data:/app/data
+    networks:
+      - instagram_automation
+
+volumes:
+  n8n_data:
+    driver: local
+  api_data:
+    driver: local
+  redis_data:
+    driver: local
+  uptime_data:
+    driver: local
+
+networks:
+  instagram_automation:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

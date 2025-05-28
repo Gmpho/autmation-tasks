@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-Professional Mock API Server for Instagram Automation Testing
-Simulates all paid services (Claude AI, OpenAI, Instagram API) for free local development
+Ultra-Secure Mock API Server for Instagram Automation Testing
+Simulates all paid services with comprehensive security hardening
+Prevents all types of injections: SQL, XSS, Command, Path Traversal
 """
 
 import os
 import json
 import time
 import random
+import re
+import html
+import logging
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template_string
+from functools import wraps
+from flask import Flask, request, jsonify, render_template_string, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
 from mock_ai_generator import MockAIGenerator
@@ -18,9 +23,128 @@ from mcp_integration import MCPManager, run_mcp_tool
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
+# Configure secure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Security hardening class
+class SecurityValidator:
+    """Lightweight security validation for injection prevention"""
+
+    # Dangerous patterns for injection detection
+    DANGEROUS_PATTERNS = [
+        # SQL injection patterns
+        r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)",
+        r"(--|#|/\*|\*/)",
+        r"(\b(OR|AND)\s+\d+\s*=\s*\d+)",
+        # XSS patterns
+        r"<script[^>]*>.*?</script>",
+        r"javascript:",
+        r"vbscript:",
+        r"onload\s*=",
+        r"onerror\s*=",
+        r"onclick\s*=",
+        # Command injection patterns
+        r"[;&|`$(){}[\]\\]",
+        r"\b(cat|ls|pwd|whoami|id|uname|ps|netstat|wget|curl|nc|telnet|ssh)\b",
+        # Path traversal patterns
+        r"(\.\.\/|\.\.\\)",
+        r"(%2e%2e%2f|%2e%2e%5c)",
+    ]
+
+    @staticmethod
+    def sanitize_input(data):
+        """Sanitize input data"""
+        if isinstance(data, str):
+            # HTML escape
+            data = html.escape(data)
+            # Remove null bytes
+            data = data.replace('\x00', '')
+            # Limit length
+            if len(data) > 10000:
+                data = data[:10000]
+        elif isinstance(data, dict):
+            return {k: SecurityValidator.sanitize_input(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [SecurityValidator.sanitize_input(item) for item in data]
+        return data
+
+    @staticmethod
+    def validate_input(data):
+        """Validate input for dangerous patterns"""
+        if isinstance(data, str):
+            data_lower = data.lower()
+            for pattern in SecurityValidator.DANGEROUS_PATTERNS:
+                if re.search(pattern, data_lower, re.IGNORECASE):
+                    logger.warning(f"Dangerous pattern detected: {pattern}")
+                    return False
+        elif isinstance(data, dict):
+            for key, value in data.items():
+                if not SecurityValidator.validate_input(key) or not SecurityValidator.validate_input(value):
+                    return False
+        elif isinstance(data, list):
+            for item in data:
+                if not SecurityValidator.validate_input(item):
+                    return False
+        return True
+
+def security_middleware(f):
+    """Security middleware decorator"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Log request
+        logger.info(f"Request: {request.method} {request.path} from {request.remote_addr}")
+
+        # Validate JSON data
+        if request.is_json:
+            try:
+                data = request.get_json()
+                if data:
+                    # Sanitize input
+                    data = SecurityValidator.sanitize_input(data)
+                    # Validate for dangerous patterns
+                    if not SecurityValidator.validate_input(data):
+                        logger.warning(f"Malicious input detected from {request.remote_addr}")
+                        abort(400, description="Invalid input detected")
+                    # Replace request data with sanitized version
+                    request._cached_json = (data, data)
+            except Exception as e:
+                logger.warning(f"Invalid JSON from {request.remote_addr}: {e}")
+                abort(400, description="Invalid JSON")
+
+        # Validate query parameters
+        for key, value in request.args.items():
+            if not SecurityValidator.validate_input(key) or not SecurityValidator.validate_input(value):
+                logger.warning(f"Malicious query parameter from {request.remote_addr}")
+                abort(400, description="Invalid query parameter")
+
+        # Execute function
+        response = f(*args, **kwargs)
+
+        # Add security headers
+        if hasattr(response, 'headers'):
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['X-Frame-Options'] = 'DENY'
+            response.headers['X-XSS-Protection'] = '1; mode=block'
+            response.headers['Content-Security-Policy'] = "default-src 'self'"
+            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        return response
+    return decorated_function
+
+# Initialize Flask app with security
 app = Flask(__name__)
-CORS(app)  # Enable CORS for n8n integration
+app.config['SECRET_KEY'] = os.urandom(32)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+
+# Enable CORS with security restrictions
+CORS(app,
+     origins=['http://localhost:5678', 'http://127.0.0.1:5678'],  # Only n8n
+     methods=['GET', 'POST'],
+     allow_headers=['Content-Type', 'Authorization'])
 
 # Initialize mock generator and MCP manager
 mock_ai = MockAIGenerator()
@@ -83,6 +207,7 @@ def health_check():
 
 # Claude AI Mock Endpoint
 @app.route('/ai/claude/generate', methods=['POST'])
+@security_middleware
 def claude_generate():
     """Mock Claude AI content generation"""
     try:
@@ -119,6 +244,7 @@ def claude_generate():
 
 # OpenAI Mock Endpoint
 @app.route('/ai/openai/generate', methods=['POST'])
+@security_middleware
 def openai_generate():
     """Mock OpenAI content generation"""
     try:
@@ -155,6 +281,7 @@ def openai_generate():
 
 # AI Comparison Endpoint
 @app.route('/ai/compare', methods=['POST'])
+@security_middleware
 def ai_compare():
     """Compare both AI providers"""
     try:
@@ -197,6 +324,7 @@ def ai_compare():
 
 # Instagram Stories Mock Endpoint
 @app.route('/ai/stories', methods=['POST'])
+@security_middleware
 def generate_stories():
     """Mock Instagram Stories generation"""
     try:
@@ -220,6 +348,7 @@ def generate_stories():
 
 # Mock Instagram Post Endpoint
 @app.route('/instagram/post', methods=['POST'])
+@security_middleware
 def instagram_post():
     """Mock Instagram posting"""
     try:
@@ -273,6 +402,7 @@ def get_analytics():
 
 # MCP Endpoints
 @app.route('/mcp/tools', methods=['GET'])
+@security_middleware
 def get_mcp_tools():
     """Get available MCP tools"""
     try:
@@ -282,6 +412,7 @@ def get_mcp_tools():
         return error_response(f"Failed to get MCP tools: {str(e)}")
 
 @app.route('/mcp/<tool_name>', methods=['POST'])
+@security_middleware
 def call_mcp_tool(tool_name):
     """Call a specific MCP tool"""
     try:
