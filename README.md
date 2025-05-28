@@ -79,10 +79,20 @@ docker-compose up -d
 3. Generate access token
 4. Update `.env` file
 
-### Claude AI Setup
+### AI Setup
 
-1. Get API key from Anthropic
-2. Update `.env` file
+#### Claude AI Setup
+1. Get API key from [Anthropic](https://console.anthropic.com/)
+2. Update `.env` file with `CLAUDE_API_KEY`
+
+#### OpenAI Setup
+1. Get API key from [OpenAI](https://platform.openai.com/api-keys)
+2. Update `.env` file with `OPENAI_API_KEY`
+
+#### Dual AI Support
+- Use both Claude and OpenAI for content generation
+- Compare outputs and choose the best results
+- Fallback support if one service is unavailable
 
 ## Usage
 
