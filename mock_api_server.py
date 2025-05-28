@@ -13,6 +13,7 @@ from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from dotenv import load_dotenv
 from mock_ai_generator import MockAIGenerator
+from mcp_integration import MCPManager, run_mcp_tool
 
 # Load environment variables
 load_dotenv()
@@ -21,8 +22,9 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for n8n integration
 
-# Initialize mock generator
+# Initialize mock generator and MCP manager
 mock_ai = MockAIGenerator()
+mcp_manager = MCPManager()
 
 # Mock database for storing generated content
 mock_database = {
@@ -71,7 +73,7 @@ def health_check():
         "uptime": "Running",
         "endpoints": [
             "/ai/claude/generate",
-            "/ai/openai/generate", 
+            "/ai/openai/generate",
             "/ai/compare",
             "/instagram/post",
             "/instagram/stories",
@@ -85,16 +87,16 @@ def claude_generate():
     """Mock Claude AI content generation"""
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         required_fields = ['topic', 'power_words', 'emotion', 'cta', 'niche']
         for field in required_fields:
             if field not in data:
                 return error_response(f"Missing required field: {field}")
-        
+
         # Simulate API delay
         time.sleep(random.uniform(0.5, 2.0))
-        
+
         # Generate mock content
         result = mock_ai.generate_with_claude_mock(
             topic=data['topic'],
@@ -103,15 +105,15 @@ def claude_generate():
             cta=data['cta'],
             niche=data['niche']
         )
-        
+
         # Store in mock database
         result['id'] = len(mock_database["generated_content"]) + 1
         result['timestamp'] = datetime.now().isoformat()
         mock_database["generated_content"].append(result)
         mock_database["analytics"]["ai_generations"] += 1
-        
+
         return success_response(result, "Claude content generated successfully")
-        
+
     except Exception as e:
         return error_response(f"Claude generation failed: {str(e)}")
 
@@ -121,16 +123,16 @@ def openai_generate():
     """Mock OpenAI content generation"""
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         required_fields = ['topic', 'power_words', 'emotion', 'cta', 'niche']
         for field in required_fields:
             if field not in data:
                 return error_response(f"Missing required field: {field}")
-        
+
         # Simulate API delay
         time.sleep(random.uniform(0.5, 2.0))
-        
+
         # Generate mock content
         result = mock_ai.generate_with_openai_mock(
             topic=data['topic'],
@@ -139,15 +141,15 @@ def openai_generate():
             cta=data['cta'],
             niche=data['niche']
         )
-        
+
         # Store in mock database
         result['id'] = len(mock_database["generated_content"]) + 1
         result['timestamp'] = datetime.now().isoformat()
         mock_database["generated_content"].append(result)
         mock_database["analytics"]["ai_generations"] += 1
-        
+
         return success_response(result, "OpenAI content generated successfully")
-        
+
     except Exception as e:
         return error_response(f"OpenAI generation failed: {str(e)}")
 
@@ -157,16 +159,16 @@ def ai_compare():
     """Compare both AI providers"""
     try:
         data = request.get_json()
-        
+
         # Validate required fields
         required_fields = ['topic', 'power_words', 'emotion', 'cta', 'niche']
         for field in required_fields:
             if field not in data:
                 return error_response(f"Missing required field: {field}")
-        
+
         # Simulate API delay for both providers
         time.sleep(random.uniform(1.0, 3.0))
-        
+
         # Generate comparison
         result = mock_ai.compare_outputs_mock(
             topic=data['topic'],
@@ -175,7 +177,7 @@ def ai_compare():
             cta=data['cta'],
             niche=data['niche']
         )
-        
+
         # Add metadata
         comparison_result = {
             "comparison_id": len(mock_database["generated_content"]) + 1,
@@ -184,12 +186,12 @@ def ai_compare():
             "recommendation": "Both providers generated quality content. Choose based on your preference.",
             "total_cost": "$0.00 (Mock)"
         }
-        
+
         mock_database["generated_content"].append(comparison_result)
         mock_database["analytics"]["ai_generations"] += 2
-        
+
         return success_response(comparison_result, "AI comparison completed successfully")
-        
+
     except Exception as e:
         return error_response(f"AI comparison failed: {str(e)}")
 
@@ -201,18 +203,18 @@ def generate_stories():
         data = request.get_json()
         topic = data.get('topic', 'General Topic')
         style = data.get('style', 'casual')
-        
+
         # Simulate API delay
         time.sleep(random.uniform(0.5, 1.5))
-        
+
         result = mock_ai.generate_stories_mock(topic, style)
         result['id'] = len(mock_database["generated_content"]) + 1
         result['timestamp'] = datetime.now().isoformat()
-        
+
         mock_database["generated_content"].append(result)
-        
+
         return success_response(result, "Instagram Stories generated successfully")
-        
+
     except Exception as e:
         return error_response(f"Stories generation failed: {str(e)}")
 
@@ -222,15 +224,15 @@ def instagram_post():
     """Mock Instagram posting"""
     try:
         data = request.get_json()
-        
+
         required_fields = ['content', 'hashtags']
         for field in required_fields:
             if field not in data:
                 return error_response(f"Missing required field: {field}")
-        
+
         # Simulate posting delay
         time.sleep(random.uniform(1.0, 3.0))
-        
+
         # Mock successful post
         post_result = {
             "post_id": f"mock_post_{random.randint(1000, 9999)}",
@@ -246,12 +248,12 @@ def instagram_post():
             "reach": random.randint(100, 1000),
             "url": f"https://instagram.com/p/mock_post_{random.randint(1000, 9999)}"
         }
-        
+
         mock_database["instagram_posts"].append(post_result)
         mock_database["analytics"]["instagram_posts"] += 1
-        
+
         return success_response(post_result, "Instagram post published successfully")
-        
+
     except Exception as e:
         return error_response(f"Instagram posting failed: {str(e)}")
 
@@ -266,8 +268,71 @@ def get_analytics():
         "server_uptime": "Running",
         "total_cost": "$0.00 (All Mock)"
     }
-    
+
     return success_response(analytics, "Analytics retrieved successfully")
+
+# MCP Endpoints
+@app.route('/mcp/tools', methods=['GET'])
+def get_mcp_tools():
+    """Get available MCP tools"""
+    try:
+        tools = mcp_manager.get_available_tools()
+        return success_response(tools, "MCP tools retrieved successfully")
+    except Exception as e:
+        return error_response(f"Failed to get MCP tools: {str(e)}")
+
+@app.route('/mcp/<tool_name>', methods=['POST'])
+def call_mcp_tool(tool_name):
+    """Call a specific MCP tool"""
+    try:
+        data = request.get_json()
+        if not data:
+            return error_response("No parameters provided")
+
+        # Use the synchronous wrapper for MCP calls
+        result = run_mcp_tool(tool_name, data)
+
+        # Store in mock database
+        result['id'] = len(mock_database["generated_content"]) + 1
+        mock_database["generated_content"].append(result)
+
+        return success_response(result, f"MCP tool '{tool_name}' executed successfully")
+
+    except ValueError as e:
+        return error_response(str(e), 404)
+    except Exception as e:
+        return error_response(f"MCP tool execution failed: {str(e)}")
+
+# Specific MCP tool endpoints for easier n8n integration
+@app.route('/mcp/filesystem', methods=['POST'])
+def mcp_filesystem():
+    """File management through MCP"""
+    return call_mcp_tool('file_manager')
+
+@app.route('/mcp/research', methods=['POST'])
+def mcp_research():
+    """Content research through MCP"""
+    return call_mcp_tool('content_research')
+
+@app.route('/mcp/images', methods=['POST'])
+def mcp_images():
+    """Image generation through MCP"""
+    return call_mcp_tool('image_generator')
+
+@app.route('/mcp/calendar', methods=['POST'])
+def mcp_calendar():
+    """Calendar management through MCP"""
+    return call_mcp_tool('calendar_manager')
+
+@app.route('/mcp/analytics', methods=['POST'])
+def mcp_analytics():
+    """Analytics tracking through MCP"""
+    return call_mcp_tool('analytics_tracker')
+
+@app.route('/mcp/hashtags', methods=['POST'])
+def mcp_hashtags():
+    """Hashtag optimization through MCP"""
+    return call_mcp_tool('hashtag_optimizer')
 
 # Dashboard Endpoint
 @app.route('/', methods=['GET'])
@@ -293,7 +358,7 @@ def dashboard():
         <div class="container">
             <h1 class="header">🚀 Mock API Server Dashboard</h1>
             <p class="status">Status: ✅ Running (FREE)</p>
-            
+
             <div class="stats">
                 <div class="stat-box">
                     <h3>{{ analytics.total_requests }}</h3>
@@ -308,18 +373,33 @@ def dashboard():
                     <p>Instagram Posts</p>
                 </div>
             </div>
-            
-            <h3>📡 Available Endpoints:</h3>
+
+            <h3>📡 AI Endpoints:</h3>
             <div class="endpoints">
                 <span class="endpoint">POST /ai/claude/generate</span>
                 <span class="endpoint">POST /ai/openai/generate</span>
                 <span class="endpoint">POST /ai/compare</span>
                 <span class="endpoint">POST /ai/stories</span>
+            </div>
+
+            <h3>🔗 MCP Endpoints:</h3>
+            <div class="endpoints">
+                <span class="endpoint">GET /mcp/tools</span>
+                <span class="endpoint">POST /mcp/filesystem</span>
+                <span class="endpoint">POST /mcp/research</span>
+                <span class="endpoint">POST /mcp/images</span>
+                <span class="endpoint">POST /mcp/calendar</span>
+                <span class="endpoint">POST /mcp/analytics</span>
+                <span class="endpoint">POST /mcp/hashtags</span>
+            </div>
+
+            <h3>📱 Instagram & System:</h3>
+            <div class="endpoints">
                 <span class="endpoint">POST /instagram/post</span>
                 <span class="endpoint">GET /analytics</span>
                 <span class="endpoint">GET /health</span>
             </div>
-            
+
             <h3>💡 Usage:</h3>
             <p>Use these endpoints in your n8n workflows to test automation without API costs!</p>
             <p><strong>Base URL:</strong> http://localhost:8000</p>
@@ -328,7 +408,7 @@ def dashboard():
     </body>
     </html>
     """
-    
+
     return render_template_string(dashboard_html, analytics=mock_database["analytics"])
 
 if __name__ == '__main__':
@@ -337,7 +417,7 @@ if __name__ == '__main__':
     print("🔗 Health Check: http://localhost:8000/health")
     print("💰 Cost: $0.00 (FREE)")
     print("-" * 50)
-    
+
     app.run(
         host='localhost',
         port=8000,

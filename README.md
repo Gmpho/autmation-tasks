@@ -1,17 +1,30 @@
-# Instagram Bot with n8n and Dual AI Support
+# Instagram Bot with n8n, Dual AI & MCP Integration
 
-An advanced Instagram automation bot using n8n for workflow automation with dual AI support (Claude AI + OpenAI) for intelligent content generation, comparison, and fallback capabilities.
+An advanced Instagram automation bot using n8n for workflow automation with dual AI support (Claude AI + OpenAI) and Model Context Protocol (MCP) integration for intelligent content generation, research, optimization, and comprehensive automation capabilities.
 
 ## ✨ Features
 
-- 🤖 **Dual AI Support**: Claude AI + OpenAI for content generation
-- 🔄 **Smart Fallback**: Automatic switching between AI providers
-- 📊 **Content Comparison**: Generate with both AIs and choose the best
-- 🐳 **Docker Integration**: Containerized n8n workflow automation
-- 🌐 **Ngrok Support**: External webhook access with auto-URL updates
-- 📱 **Instagram Integration**: Full Instagram API support
-- 🛡️ **Secure Setup**: Environment-based configuration
-- 🔧 **Easy Deployment**: One-command setup with Docker Compose
+### 🤖 **AI & Content Generation**
+- **Dual AI Support**: Claude AI + OpenAI for content generation
+- **Smart Fallback**: Automatic switching between AI providers
+- **Content Comparison**: Generate with both AIs and choose the best
+- **Mock AI Testing**: Free development with realistic AI responses
+
+### 🔗 **MCP (Model Context Protocol) Integration**
+- **File Management**: Read/write content templates and assets
+- **Content Research**: Trending topics and hashtag analysis
+- **Image Generation**: Automated visual content creation
+- **Calendar Management**: Smart content scheduling
+- **Analytics Tracking**: Performance monitoring and insights
+- **Hashtag Optimization**: Maximize reach and engagement
+
+### 🛠️ **Infrastructure & Automation**
+- **Docker Integration**: Containerized n8n workflow automation
+- **Professional Mock API**: Complete testing environment ($0 cost)
+- **Ngrok Support**: External webhook access with auto-URL updates
+- **Instagram Integration**: Full Instagram API support
+- **Secure Setup**: Environment-based configuration
+- **Easy Deployment**: One-command setup with Docker Compose
 
 ## Prerequisites
 
@@ -130,6 +143,24 @@ docker-compose up -d
    python ai_content_generator.py
    ```
 
+4. **Test MCP Integration**:
+   ```bash
+   # Test MCP tools directly
+   python mcp_integration.py
+
+   # Test MCP via API server
+   python test_mcp_integration.py
+   ```
+
+5. **Start Mock API Server**:
+   ```bash
+   # Start the complete mock environment
+   python setup_free_development.py
+
+   # Or start just the API server
+   python start_mock_server.py
+   ```
+
 ### Using the AI Content Generator
 
 ```python
@@ -166,6 +197,48 @@ comparison = generator.compare_outputs(
 )
 ```
 
+### Using MCP Tools
+
+```python
+from mcp_integration import MCPManager
+import asyncio
+
+async def demo_mcp():
+    manager = MCPManager()
+
+    # Research trending content
+    research = await manager.call_tool('content_research', {
+        "topic": "Instagram Growth 2024",
+        "platform": "instagram",
+        "limit": 10
+    })
+
+    # Generate optimized hashtags
+    hashtags = await manager.call_tool('hashtag_optimizer', {
+        "content": "Amazing productivity tips for entrepreneurs!",
+        "niche": "productivity",
+        "target_audience": "entrepreneurs"
+    })
+
+    # Create visual content
+    image = await manager.call_tool('image_generator', {
+        "prompt": "Modern Instagram post about productivity",
+        "style": "professional",
+        "size": "1080x1080"
+    })
+
+    # Schedule content
+    schedule = await manager.call_tool('calendar_manager', {
+        "action": "create",
+        "date": "2024-01-15",
+        "time": "09:00",
+        "content": "Productivity tips post"
+    })
+
+# Run the demo
+asyncio.run(demo_mcp())
+```
+
 ### n8n Workflow Integration
 
 1. Access n8n interface at `http://localhost:5678`
@@ -179,15 +252,25 @@ comparison = generator.compare_outputs(
 ```
 instagram-bot/
 ├── 📄 ai_content_generator.py      # Main AI content generator with dual support
+├── 📄 mcp_integration.py           # MCP (Model Context Protocol) integration
+├── 📄 mock_api_server.py           # Professional mock API server
+├── 📄 mock_ai_generator.py         # Mock AI responses for free testing
 ├── 📄 test_claude.py               # Claude AI connection test
 ├── 📄 test_openai.py               # OpenAI connection test
 ├── 📄 test_env.py                  # Environment variables test
+├── 📄 test_mcp_integration.py      # MCP integration testing
+├── 📄 test_mock_api.py             # Mock API comprehensive testing
+├── 📄 setup_free_development.py    # One-command free setup
+├── 📄 start_mock_server.py         # Simple mock server startup
 ├── 📄 docker-compose.yml           # n8n container configuration
 ├── 📄 requirements.txt             # Python dependencies
 ├── 📄 .env.example                 # Environment template
 ├── 📄 .gitignore                   # Git ignore rules
 ├── 📄 README.md                    # This file
 ├── 📄 LICENSE                      # MIT license
+├── 📄 FREE_DEVELOPMENT_GUIDE.md    # Free development workflow
+├── 📄 MCP_INTEGRATION_GUIDE.md     # Complete MCP integration guide
+├── 📄 N8N_MOCK_INTEGRATION.md      # n8n mock API integration
 ├── 📁 templates/                   # AI prompt templates
 │   ├── claude_prompt.py            # Claude-specific prompts
 │   └── openai_prompt.py            # OpenAI-specific prompts
@@ -197,10 +280,24 @@ instagram-bot/
 
 ### Key Files Explained
 
+#### **🤖 AI & Content Generation**
 - **`ai_content_generator.py`**: Main class for generating content with both AI providers
-- **`test_*.py`**: Individual test scripts for each component
-- **`templates/`**: Structured prompts optimized for each AI provider
+- **`mcp_integration.py`**: Model Context Protocol integration for extended capabilities
+- **`mock_ai_generator.py`**: Mock AI responses for free development and testing
+
+#### **🌐 Mock API & Testing**
+- **`mock_api_server.py`**: Professional Flask-based mock API server with dashboard
+- **`test_*.py`**: Comprehensive test scripts for all components
+- **`setup_free_development.py`**: One-command setup for complete free development environment
+
+#### **📚 Documentation & Guides**
+- **`FREE_DEVELOPMENT_GUIDE.md`**: Complete guide for $0 cost development
+- **`MCP_INTEGRATION_GUIDE.md`**: Detailed MCP integration and usage guide
+- **`N8N_MOCK_INTEGRATION.md`**: n8n workflow integration with mock APIs
+
+#### **🛠️ Infrastructure**
 - **`docker-compose.yml`**: Runs n8n with all necessary environment variables
+- **`templates/`**: Structured prompts optimized for each AI provider
 - **`.env.example`**: Template showing all required environment variables
 
 ## Security Guidelines
@@ -261,6 +358,8 @@ Both AI services require billing setup for API access:
 - **Rate Limits**: Be mindful of Instagram API rate limits to avoid account restrictions
 - **Testing**: Test thoroughly in a development environment before using with production accounts
 - **AI Costs**: Monitor your AI usage to avoid unexpected charges
+- **MCP Integration**: MCP tools work in mock mode for free development, real MCP servers may have additional costs
+- **Free Development**: Use mock APIs and MCP tools to build and test everything before adding real API keys
 
 ## Contributing
 
