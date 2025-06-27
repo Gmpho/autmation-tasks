@@ -322,7 +322,8 @@ def ai_compare():
         return success_response(comparison_result, "AI comparison completed successfully")
 
     except Exception as e:
-        return error_response(f"AI comparison failed: {str(e)}")
+        logging.error(f"AI comparison failed: {str(e)}")
+        return error_response("AI comparison failed due to an internal error.")
 
 # Instagram Stories Mock Endpoint
 @app.route('/ai/stories', methods=['POST'])
