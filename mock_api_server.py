@@ -436,7 +436,8 @@ def call_mcp_tool(tool_name):
         return success_response(result, f"MCP tool '{tool_name}' executed successfully")
 
     except ValueError as e:
-        return error_response(str(e), 404)
+        logging.error(f"ValueError occurred: {str(e)}", exc_info=True)
+        return error_response("Invalid input provided.", 404)
     except Exception as e:
         logging.error(f"MCP tool execution failed: {str(e)}", exc_info=True)
         return error_response("MCP tool execution failed due to an internal error.")
