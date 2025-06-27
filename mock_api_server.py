@@ -414,7 +414,8 @@ def get_mcp_tools():
         tools = mcp_manager.get_available_tools()
         return success_response(tools, "MCP tools retrieved successfully")
     except Exception as e:
-        return error_response(f"Failed to get MCP tools: {str(e)}")
+        logging.error(f"Failed to get MCP tools: {str(e)}", exc_info=True)
+        return error_response("Failed to retrieve MCP tools due to an internal error.")
 
 @app.route('/mcp/<tool_name>', methods=['POST'])
 @security_middleware
@@ -437,7 +438,8 @@ def call_mcp_tool(tool_name):
     except ValueError as e:
         return error_response(str(e), 404)
     except Exception as e:
-        return error_response(f"MCP tool execution failed: {str(e)}")
+        logging.error(f"MCP tool execution failed: {str(e)}", exc_info=True)
+        return error_response("MCP tool execution failed due to an internal error.")
 
 # Specific MCP tool endpoints for easier n8n integration
 @app.route('/mcp/filesystem', methods=['POST'])
