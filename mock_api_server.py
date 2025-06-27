@@ -278,7 +278,8 @@ def openai_generate():
         return success_response(result, "OpenAI content generated successfully")
 
     except Exception as e:
-        return error_response(f"OpenAI generation failed: {str(e)}")
+        logging.error(f"OpenAI generation failed: {str(e)}", exc_info=True)
+        return error_response("OpenAI generation failed due to an internal error.")
 
 # AI Comparison Endpoint
 @app.route('/ai/compare', methods=['POST'])
