@@ -87,8 +87,8 @@ def check_no_secrets_committed():
             secrets_found.append(indicator)
     
     if secrets_found:
-        print(f"⚠️ Potential secrets detected: {secrets_found}")
-        print("🔧 Review and remove any hardcoded secrets")
+        print(f"⚠️ Potential secrets detected. {len(secrets_found)} indicators matched.")
+        print("🔧 Review the commit content and remove any hardcoded secrets.")
         return False
     else:
         print("✅ No secrets detected in commit")
