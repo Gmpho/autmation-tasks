@@ -240,7 +240,8 @@ def claude_generate():
         return success_response(result, "Claude content generated successfully")
 
     except Exception as e:
-        return error_response(f"Claude generation failed: {str(e)}")
+        logging.error("Claude generation failed", exc_info=True)
+        return error_response("Claude generation failed due to an internal error.")
 
 # OpenAI Mock Endpoint
 @app.route('/ai/openai/generate', methods=['POST'])
