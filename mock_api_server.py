@@ -549,9 +549,10 @@ if __name__ == '__main__':
     print("💰 Cost: $0.00 (FREE)")
     print("-" * 50)
 
+    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     app.run(
         host='localhost',
         port=8000,
-        debug=True,
+        debug=debug_mode,
         use_reloader=False  # Prevent double startup in debug mode
     )
