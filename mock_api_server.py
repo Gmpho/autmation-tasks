@@ -347,7 +347,8 @@ def generate_stories():
         return success_response(result, "Instagram Stories generated successfully")
 
     except Exception as e:
-        return error_response(f"Stories generation failed: {str(e)}")
+        logging.error(f"Error during stories generation: {str(e)}", exc_info=True)
+        return error_response("Stories generation failed due to an internal error.")
 
 # Mock Instagram Post Endpoint
 @app.route('/instagram/post', methods=['POST'])
@@ -387,7 +388,8 @@ def instagram_post():
         return success_response(post_result, "Instagram post published successfully")
 
     except Exception as e:
-        return error_response(f"Instagram posting failed: {str(e)}")
+        logging.error(f"Error during Instagram posting: {str(e)}", exc_info=True)
+        return error_response("Instagram posting failed due to an internal error.")
 
 # Analytics Endpoint
 @app.route('/analytics', methods=['GET'])
