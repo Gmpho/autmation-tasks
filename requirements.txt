@@ -22,7 +22,7 @@ httpx==0.28.1
 gunicorn==23.0.0  # Production WSGI server
 cryptography==45.0.3  # Secure cryptographic operations
 certifi==2025.4.26  # Updated CA certificates
-urllib3==2.4.0  # Secure HTTP library
+urllib3==2.5.0  # Secure HTTP library
 requests==2.32.3  # HTTP library with security patches
 
 # Security: Input validation and sanitization
