@@ -43,7 +43,7 @@ def test_endpoint(method, endpoint, data=None, description=""):
             
     except requests.exceptions.ConnectionError:
         print("❌ Connection Error: Make sure the mock API server is running!")
-        print("💡 Start it with: python mock_api_server.py")
+        print("💡 Start it with: uvicorn mock_api_server:app --port 8000")
     except Exception as e:
         print(f"❌ Error: {str(e)}")
 
@@ -162,8 +162,8 @@ if __name__ == "__main__":
     except requests.exceptions.ConnectionError:
         print("❌ Mock API Server is not running!")
         print("\n🚀 To start the server:")
-        print("1. Install dependencies: pip install flask flask-cors")
-        print("2. Run server: python mock_api_server.py")
+        print("1. Install dependencies: pip install -r requirements.txt")
+        print("2. Run server: uvicorn mock_api_server:app --port 8000")
         print("3. Run this test again: python test_mock_api.py")
         
     except Exception as e:

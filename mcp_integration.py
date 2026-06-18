@@ -329,12 +329,6 @@ class MCPManager:
             for name, tool in self.tools.items()
         }
 
-# Async wrapper for synchronous usage
-def run_mcp_tool(tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-    """Synchronous wrapper for MCP tool calls"""
-    manager = MCPManager()
-    return asyncio.run(manager.call_tool(tool_name, parameters))
-
 # Example usage
 if __name__ == "__main__":
     async def demo():

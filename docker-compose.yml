@@ -1,7 +1,6 @@
-version: '3'
 services:
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:1.86.0
     container_name: insta_automation
     restart: unless-stopped
     ports:
@@ -22,3 +21,21 @@ services:
       - N8N_TRUST_PROXY_HEADER=true
       - N8N_SECURITY_CONTENTS_CSRF=true
       - N8N_RUNNERS_ENABLED=true
+
+  mock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock-api
+    container_name: mock_api_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "mock_api_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - .:/app
+    environment:
+      - PRIMARY_MODEL=${PRIMARY_MODEL:-ollama/llama3.2}
+      - FALLBACK_MODELS=${FALLBACK_MODELS:-gpt-4o}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONUNBUFFERED=1

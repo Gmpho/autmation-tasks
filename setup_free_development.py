@@ -49,8 +49,9 @@ def check_docker():
 def install_dependencies():
     """Install required Python packages"""
     packages = [
-        "flask>=2.3.0",
-        "flask-cors>=4.0.0", 
+        "fastapi[standard]>=0.115.0",
+        "uvicorn[standard]>=0.34.0",
+        "litellm>=1.61.2",
         "requests>=2.31.0"
     ]
     
@@ -74,9 +75,9 @@ def create_env_file():
         print("📝 Creating .env file from template...")
         with open(env_example, 'r') as src, open(env_file, 'w') as dst:
             content = src.read()
-            # Add mock-specific variables
-            content += "\n# Mock Development Settings\n"
-            content += "MOCK_MODE=true\n"
+            # Add dev-specific variables
+            content += "\n# Development Settings\n"
+            content += "PRIMARY_MODEL=ollama/llama3.2\n"
             content += "MOCK_API_URL=http://localhost:8000\n"
             dst.write(content)
         print("✅ .env file created")
@@ -86,26 +87,25 @@ def create_env_file():
     else:
         print("❌ .env.example not found")
 
-def test_mock_generator():
-    """Test the mock AI generator"""
+def test_ollama():
+    """Test if Ollama is available"""
     try:
-        from mock_ai_generator import MockAIGenerator
-        mock_gen = MockAIGenerator()
-        result = mock_gen.generate_with_claude_mock(
-            topic="Test", power_words="test", emotion="test", 
-            cta="test", niche="test"
-        )
-        print("✅ Mock AI generator is working")
-        return True
-    except Exception as e:
-        print(f"❌ Mock AI generator error: {e}")
+        result = subprocess.run(['ollama', 'list'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("✅ Ollama is available")
+            return True
+        else:
+            print("❌ Ollama is not running")
+            return False
+    except FileNotFoundError:
+        print("❌ Ollama is not installed")
+        print("💡 Install with: curl -fsSL https://ollama.com/install.sh | sh")
         return False
 
 def start_services():
     """Start Docker and Mock API services"""
     print("🐳 Starting Docker services...")
     try:
-        # Start n8n with docker-compose
         result = subprocess.run(['docker-compose', 'up', '-d'], 
                               capture_output=True, text=True)
         if result.returncode == 0:
@@ -119,8 +119,8 @@ def start_services():
         return False
     
     print("\n🚀 Starting Mock API Server...")
-    print("💡 This will run in the background")
     print("📊 Dashboard: http://localhost:8000")
+    print("📖 API docs: http://localhost:8000/docs")
     
     return True
 
@@ -128,29 +128,30 @@ def run_tests():
     """Run comprehensive tests"""
     print("🧪 Running tests...")
     
-    # Test environment
     try:
         subprocess.run([sys.executable, 'test_env.py'], check=True)
         print("✅ Environment test passed")
     except subprocess.CalledProcessError:
         print("❌ Environment test failed")
     
-    # Test mock generator
     try:
-        subprocess.run([sys.executable, 'mock_ai_generator.py'], check=True)
-        print("✅ Mock AI generator test passed")
+        subprocess.run([sys.executable, 'test_mock_api.py'], check=True)
+        print("✅ API test passed")
     except subprocess.CalledProcessError:
-        print("❌ Mock AI generator test failed")
+        print("❌ API test failed")
 
-def print_success_summary():
+def print_success_summary(ollama_available=False):
     """Print success summary and next steps"""
     print_header("🎉 FREE DEVELOPMENT SETUP COMPLETE!")
     
     print("✅ What's Ready:")
-    print("   • Mock AI Server (Claude + OpenAI simulation)")
+    print("   • AI Server (FastAPI + LiteLLM + Ollama)")
     print("   • n8n Workflow Automation")
     print("   • Complete testing environment")
-    print("   • Zero API costs")
+    if ollama_available:
+        print("   • Free local AI via Ollama")
+    else:
+        print("   • Cloud AI providers (Claude, OpenAI) with Ollama fallback")
     
     print("\n🌐 Access Points:")
     print("   • n8n Dashboard: http://localhost:5678")
@@ -191,10 +192,13 @@ def main():
     print_step("3", "Setting Up Environment")
     create_env_file()
     
-    # Step 4: Test mock components
-    print_step("4", "Testing Mock Components")
-    if not test_mock_generator():
-        return False
+    # Step 4: Check Ollama (optional — for free local AI)
+    print_step("4", "Checking Ollama (optional, for free local AI)")
+    has_ollama = test_ollama()
+    if has_ollama:
+        print("💡 Set PRIMARY_MODEL=ollama/llama3.2 for free local generation")
+    else:
+        print("💡 Ollama not required — will use cloud AI providers or mock mode")
     
     # Step 5: Start services
     print_step("5", "Starting Services")
@@ -207,7 +211,7 @@ def main():
     run_tests()
     
     # Success summary
-    print_success_summary()
+    print_success_summary(ollama_available=has_ollama)
     
     return True
 

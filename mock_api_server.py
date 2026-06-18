@@ -1,69 +1,61 @@
 #!/usr/bin/env python3
 """
-Ultra-Secure Mock API Server for Instagram Automation Testing
-Simulates all paid services with comprehensive security hardening
-Prevents all types of injections: SQL, XSS, Command, Path Traversal
+Secure Mock API Server for Instagram Automation Testing
+FastAPI + LiteLLM + Ollama — unified AI with fallback support
 """
 
 import os
 import json
-import time
-import random
 import re
 import html
+import random
 import logging
+import asyncio
 from datetime import datetime
-from functools import wraps
-from flask import Flask, request, jsonify, render_template_string, abort
-from flask_cors import CORS
-from dotenv import load_dotenv
-from mock_ai_generator import MockAIGenerator
-from mcp_integration import MCPManager, run_mcp_tool
+from typing import Any, Optional
 
-# Load environment variables
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+from mcp_integration import MCPManager
+
 load_dotenv()
 
-# Configure secure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Security hardening class
-class SecurityValidator:
-    """Lightweight security validation for injection prevention"""
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
 
-    # Dangerous patterns for injection detection
+class SecurityValidator:
     DANGEROUS_PATTERNS = [
-        # SQL injection patterns
         r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)",
         r"(--|#|/\*|\*/)",
         r"(\b(OR|AND)\s+\d+\s*=\s*\d+)",
-        # XSS patterns
         r"<script[^>]*>.*?</script>",
         r"javascript:",
         r"vbscript:",
         r"onload\s*=",
         r"onerror\s*=",
         r"onclick\s*=",
-        # Command injection patterns
         r"[;&|`$(){}[\]\\]",
         r"\b(cat|ls|pwd|whoami|id|uname|ps|netstat|wget|curl|nc|telnet|ssh)\b",
-        # Path traversal patterns
         r"(\.\.\/|\.\.\\)",
         r"(%2e%2e%2f|%2e%2e%5c)",
     ]
 
     @staticmethod
     def sanitize_input(data):
-        """Sanitize input data"""
         if isinstance(data, str):
-            # HTML escape
             data = html.escape(data)
-            # Remove null bytes
             data = data.replace('\x00', '')
-            # Limit length
             if len(data) > 10000:
                 data = data[:10000]
         elif isinstance(data, dict):
@@ -73,84 +65,46 @@ class SecurityValidator:
         return data
 
     @staticmethod
-    def validate_input(data):
-        """Validate input for dangerous patterns"""
-        if isinstance(data, str):
-            data_lower = data.lower()
-            for pattern in SecurityValidator.DANGEROUS_PATTERNS:
-                if re.search(pattern, data_lower, re.IGNORECASE):
-                    logger.warning(f"Dangerous pattern detected: {pattern}")
-                    return False
-        elif isinstance(data, dict):
-            for key, value in data.items():
-                if not SecurityValidator.validate_input(key) or not SecurityValidator.validate_input(value):
-                    return False
-        elif isinstance(data, list):
-            for item in data:
-                if not SecurityValidator.validate_input(item):
-                    return False
+    def validate_value(value: str) -> bool:
+        if not isinstance(value, str):
+            return True
+        value_lower = value.lower()
+        for pattern in SecurityValidator.DANGEROUS_PATTERNS:
+            if re.search(pattern, value_lower, re.IGNORECASE):
+                logger.warning(f"Dangerous pattern detected: {pattern}")
+                return False
         return True
 
-def security_middleware(f):
-    """Security middleware decorator"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Log request
-        logger.info(f"Request: {request.method} {request.path} from {request.remote_addr}")
+# ---------------------------------------------------------------------------
+# Pydantic models
+# ---------------------------------------------------------------------------
 
-        # Validate JSON data
-        if request.is_json:
-            try:
-                data = request.get_json()
-                if data:
-                    # Sanitize input
-                    data = SecurityValidator.sanitize_input(data)
-                    # Validate for dangerous patterns
-                    if not SecurityValidator.validate_input(data):
-                        logger.warning(f"Malicious input detected from {request.remote_addr}")
-                        abort(400, description="Invalid input detected")
-                    # Replace request data with sanitized version
-                    request._cached_json = (data, data)
-            except Exception as e:
-                logger.warning(f"Invalid JSON from {request.remote_addr}: {e}")
-                abort(400, description="Invalid JSON")
+class APIResponse(BaseModel):
+    status: str = "success"
+    message: str = "Success"
+    data: Any = None
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    cost: str = "$0.00 (Mock)"
 
-        # Validate query parameters
-        for key, value in request.args.items():
-            if not SecurityValidator.validate_input(key) or not SecurityValidator.validate_input(value):
-                logger.warning(f"Malicious query parameter from {request.remote_addr}")
-                abort(400, description="Invalid query parameter")
+class ContentRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=500)
+    power_words: str = Field(..., min_length=1)
+    emotion: str = Field(..., min_length=1)
+    cta: str = Field(..., min_length=1)
+    niche: str = Field(..., min_length=1)
 
-        # Execute function
-        response = f(*args, **kwargs)
+class StoriesRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=500)
+    style: str = "casual"
 
-        # Add security headers
-        if hasattr(response, 'headers'):
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            response.headers['X-Frame-Options'] = 'DENY'
-            response.headers['X-XSS-Protection'] = '1; mode=block'
-            response.headers['Content-Security-Policy'] = "default-src 'self'"
-            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+class InstagramPostRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    hashtags: list[str] = Field(..., min_length=1)
 
-        return response
-    return decorated_function
+# ---------------------------------------------------------------------------
+# Mock database
+# ---------------------------------------------------------------------------
 
-# Initialize Flask app with security
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(32)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
-
-# Enable CORS with security restrictions
-CORS(app,
-     origins=['http://localhost:5678', 'http://127.0.0.1:5678'],  # Only n8n
-     methods=['GET', 'POST'],
-     allow_headers=['Content-Type', 'Authorization'])
-
-# Initialize mock generator and MCP manager
-mock_ai = MockAIGenerator()
-mcp_manager = MCPManager()
-
-# Mock database for storing generated content
 mock_database = {
     "generated_content": [],
     "instagram_posts": [],
@@ -161,240 +115,260 @@ mock_database = {
     }
 }
 
-# API Response helpers
-def success_response(data, message="Success"):
-    """Standard success response format"""
-    return jsonify({
-        "status": "success",
-        "message": message,
-        "data": data,
-        "timestamp": datetime.now().isoformat(),
-        "cost": "$0.00 (Mock)"
-    })
+# ---------------------------------------------------------------------------
+# FastAPI app
+# ---------------------------------------------------------------------------
 
-def error_response(message, code=400):
-    """Standard error response format"""
-    return jsonify({
-        "status": "error",
-        "message": message,
-        "timestamp": datetime.now().isoformat()
-    }), code
+app = FastAPI(title="Mock API Server", version="3.0.0")
 
-# Middleware for request logging
-@app.before_request
-def log_request():
-    """Log all incoming requests"""
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5678",
+        "http://127.0.0.1:5678",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+
+mcp_manager = MCPManager()
+
+# ---------------------------------------------------------------------------
+# Security middleware
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url.path}")
+
     mock_database["analytics"]["total_requests"] += 1
-    print(f"📥 {request.method} {request.path} - Request #{mock_database['analytics']['total_requests']}")
 
-# Health check endpoint
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return success_response({
-        "service": "Mock API Server",
-        "status": "healthy",
-        "uptime": "Running",
-        "endpoints": [
-            "/ai/claude/generate",
-            "/ai/openai/generate",
-            "/ai/compare",
-            "/instagram/post",
-            "/instagram/stories",
-            "/analytics"
-        ]
-    })
+    if request.method == "POST":
+        body = await request.body()
+        if body:
+            try:
+                data = json.loads(body)
+                sanitized = SecurityValidator.sanitize_input(data)
+                ok = True
+                for v in (sanitized.values() if isinstance(sanitized, dict) else [sanitized]):
+                    if isinstance(v, str) and not SecurityValidator.validate_value(v):
+                        ok = False
+                        break
+                if not ok:
+                    logger.warning(f"Malicious input detected from {request.client.host}")
+                    return JSONResponse(
+                        {"status": "error", "message": "Invalid input detected",
+                         "timestamp": datetime.now().isoformat()},
+                        status_code=400
+                    )
+            except json.JSONDecodeError:
+                pass
 
-# Claude AI Mock Endpoint
-@app.route('/ai/claude/generate', methods=['POST'])
-@security_middleware
-def claude_generate():
-    """Mock Claude AI content generation"""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# ---------------------------------------------------------------------------
+# LiteLLM helpers
+# ---------------------------------------------------------------------------
+
+PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "claude-sonnet-4-20250514")
+FALLBACK_MODELS = os.getenv("FALLBACK_MODELS", "")
+
+async def generate_ai_content(prompt: str, model: str | None = None) -> tuple[str, str]:
+    from litellm import acompletion
+
+    chosen = model or PRIMARY_MODEL
+    kwargs = {
+        "model": chosen,
+        "messages": [{"role": "user", "content": prompt}],
+        "num_retries": 2,
+    }
+
+    fallbacks = FALLBACK_MODELS.split(",") if FALLBACK_MODELS else []
+    if fallbacks:
+        kwargs["fallbacks"] = fallbacks
+
+    response = await acompletion(**kwargs)
+    content = response.choices[0].message.content or ""
+
+    cost = "$0.00 (Mock)"
     try:
-        data = request.get_json()
+        raw = response._hidden_params.get("response_cost")
+        if raw is not None:
+            cost = f"${float(raw):.4f}"
+    except Exception:
+        pass
 
-        # Validate required fields
-        required_fields = ['topic', 'power_words', 'emotion', 'cta', 'niche']
-        for field in required_fields:
-            if field not in data:
-                return error_response(f"Missing required field: {field}")
+    return content, cost
 
-        # Simulate API delay
-        time.sleep(random.uniform(0.5, 2.0))
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
-        # Generate mock content
-        result = mock_ai.generate_with_claude_mock(
-            topic=data['topic'],
-            power_words=data['power_words'],
-            emotion=data['emotion'],
-            cta=data['cta'],
-            niche=data['niche']
-        )
-
-        # Store in mock database
-        result['id'] = len(mock_database["generated_content"]) + 1
-        result['timestamp'] = datetime.now().isoformat()
-        mock_database["generated_content"].append(result)
-        mock_database["analytics"]["ai_generations"] += 1
-
-        return success_response(result, "Claude content generated successfully")
-
-    except Exception as e:
-        logging.error("Claude generation failed", exc_info=True)
-        return error_response("Claude generation failed due to an internal error.")
-
-# OpenAI Mock Endpoint
-@app.route('/ai/openai/generate', methods=['POST'])
-@security_middleware
-def openai_generate():
-    """Mock OpenAI content generation"""
-    try:
-        data = request.get_json()
-
-        # Validate required fields
-        required_fields = ['topic', 'power_words', 'emotion', 'cta', 'niche']
-        for field in required_fields:
-            if field not in data:
-                return error_response(f"Missing required field: {field}")
-
-        # Simulate API delay
-        time.sleep(random.uniform(0.5, 2.0))
-
-        # Generate mock content
-        result = mock_ai.generate_with_openai_mock(
-            topic=data['topic'],
-            power_words=data['power_words'],
-            emotion=data['emotion'],
-            cta=data['cta'],
-            niche=data['niche']
-        )
-
-        # Store in mock database
-        result['id'] = len(mock_database["generated_content"]) + 1
-        result['timestamp'] = datetime.now().isoformat()
-        mock_database["generated_content"].append(result)
-        mock_database["analytics"]["ai_generations"] += 1
-
-        return success_response(result, "OpenAI content generated successfully")
-
-    except Exception as e:
-        logging.error(f"OpenAI generation failed: {str(e)}", exc_info=True)
-        return error_response("OpenAI generation failed due to an internal error.")
-
-# AI Comparison Endpoint
-@app.route('/ai/compare', methods=['POST'])
-@security_middleware
-def ai_compare():
-    """Compare both AI providers"""
-    try:
-        data = request.get_json()
-
-        # Validate required fields
-        required_fields = ['topic', 'power_words', 'emotion', 'cta', 'niche']
-        for field in required_fields:
-            if field not in data:
-                return error_response(f"Missing required field: {field}")
-
-        # Simulate API delay for both providers
-        time.sleep(random.uniform(1.0, 3.0))
-
-        # Generate comparison
-        result = mock_ai.compare_outputs_mock(
-            topic=data['topic'],
-            power_words=data['power_words'],
-            emotion=data['emotion'],
-            cta=data['cta'],
-            niche=data['niche']
-        )
-
-        # Add metadata
-        comparison_result = {
-            "comparison_id": len(mock_database["generated_content"]) + 1,
-            "timestamp": datetime.now().isoformat(),
-            "providers": result,
-            "recommendation": "Both providers generated quality content. Choose based on your preference.",
-            "total_cost": "$0.00 (Mock)"
+@app.get("/health")
+async def health_check():
+    return APIResponse(
+        data={
+            "service": "Mock API Server",
+            "status": "healthy",
+            "uptime": "Running",
+            "endpoints": [
+                "/ai/generate", "/ai/compare", "/ai/stories",
+                "/instagram/post", "/analytics"
+            ]
         }
+    )
 
-        mock_database["generated_content"].append(comparison_result)
-        mock_database["analytics"]["ai_generations"] += 2
 
-        return success_response(comparison_result, "AI comparison completed successfully")
+@app.post("/ai/generate")
+async def ai_generate(data: ContentRequest):
+    from templates.prompts import build_instagram_prompt
 
-    except Exception as e:
-        logging.error(f"AI comparison failed: {str(e)}")
-        return error_response("AI comparison failed due to an internal error.")
+    await asyncio.sleep(random.uniform(0.5, 2.0))
 
-# Instagram Stories Mock Endpoint
-@app.route('/ai/stories', methods=['POST'])
-@security_middleware
-def generate_stories():
-    """Mock Instagram Stories generation"""
-    try:
-        data = request.get_json()
-        topic = data.get('topic', 'General Topic')
-        style = data.get('style', 'casual')
+    prompt = build_instagram_prompt(
+        data.topic, data.power_words, data.emotion, data.cta, data.niche
+    )
+    content, cost = await generate_ai_content(prompt)
 
-        # Simulate API delay
-        time.sleep(random.uniform(0.5, 1.5))
+    result = {
+        "id": len(mock_database["generated_content"]) + 1,
+        "provider": PRIMARY_MODEL,
+        "content": content,
+        "timestamp": datetime.now().isoformat(),
+    }
+    mock_database["generated_content"].append(result)
+    mock_database["analytics"]["ai_generations"] += 1
 
-        result = mock_ai.generate_stories_mock(topic, style)
-        result['id'] = len(mock_database["generated_content"]) + 1
-        result['timestamp'] = datetime.now().isoformat()
+    return APIResponse(data=result, message="Content generated successfully", cost=cost)
 
-        mock_database["generated_content"].append(result)
 
-        return success_response(result, "Instagram Stories generated successfully")
+@app.post("/ai/claude/generate")
+async def claude_generate_redirect(data: ContentRequest):
+    logger.warning("/ai/claude/generate is deprecated — use /ai/generate with PRIMARY_MODEL")
+    import copy
+    req = copy.copy(data)
+    return await ai_generate(req)
 
-    except Exception as e:
-        logging.error(f"Error during stories generation: {str(e)}", exc_info=True)
-        return error_response("Stories generation failed due to an internal error.")
 
-# Mock Instagram Post Endpoint
-@app.route('/instagram/post', methods=['POST'])
-@security_middleware
-def instagram_post():
-    """Mock Instagram posting"""
-    try:
-        data = request.get_json()
+@app.post("/ai/openai/generate")
+async def openai_generate_redirect(data: ContentRequest):
+    logger.warning("/ai/openai/generate is deprecated — use /ai/generate with PRIMARY_MODEL")
+    import copy
+    req = copy.copy(data)
+    return await ai_generate(req)
 
-        required_fields = ['content', 'hashtags']
-        for field in required_fields:
-            if field not in data:
-                return error_response(f"Missing required field: {field}")
 
-        # Simulate posting delay
-        time.sleep(random.uniform(1.0, 3.0))
+@app.post("/ai/compare")
+async def ai_compare(data: ContentRequest):
+    from litellm import acompletion
+    from templates.prompts import build_instagram_prompt
 
-        # Mock successful post
-        post_result = {
-            "post_id": f"mock_post_{random.randint(1000, 9999)}",
-            "status": "published",
-            "content": data['content'],
-            "hashtags": data['hashtags'],
-            "timestamp": datetime.now().isoformat(),
-            "engagement": {
-                "likes": random.randint(10, 100),
-                "comments": random.randint(1, 20),
-                "shares": random.randint(0, 10)
-            },
-            "reach": random.randint(100, 1000),
-            "url": f"https://instagram.com/p/mock_post_{random.randint(1000, 9999)}"
-        }
+    await asyncio.sleep(random.uniform(1.0, 3.0))
 
-        mock_database["instagram_posts"].append(post_result)
-        mock_database["analytics"]["instagram_posts"] += 1
+    models = ["claude-sonnet-4-20250514", "gpt-4o"]
+    prompt = build_instagram_prompt(
+        data.topic, data.power_words, data.emotion, data.cta, data.niche
+    )
 
-        return success_response(post_result, "Instagram post published successfully")
+    async def call_model(model: str):
+        try:
+            resp = await acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                num_retries=1,
+            )
+            c = resp.choices[0].message.content or ""
+            cost_raw = None
+            try:
+                cost_raw = resp._hidden_params.get("response_cost")
+            except Exception:
+                pass
+            return {"provider": model, "content": c, "cost": cost_raw}
+        except Exception as e:
+            return {"provider": model, "error": str(e)}
 
-    except Exception as e:
-        logging.error(f"Error during Instagram posting: {str(e)}", exc_info=True)
-        return error_response("Instagram posting failed due to an internal error.")
+    results = await asyncio.gather(call_model(models[0]), call_model(models[1]))
 
-# Analytics Endpoint
-@app.route('/analytics', methods=['GET'])
-def get_analytics():
-    """Get mock analytics data"""
+    total_cost = 0.0
+    for r in results:
+        if r.get("cost") is not None:
+            total_cost += float(r["cost"])
+        r.pop("cost", None)
+
+    comparison_result = {
+        "comparison_id": len(mock_database["generated_content"]) + 1,
+        "timestamp": datetime.now().isoformat(),
+        "providers": {r["provider"].split("-")[0]: r for r in results},
+        "recommendation": "Both providers generated quality content. Choose based on your preference.",
+        "total_cost": f"${total_cost:.4f}" if total_cost else "$0.00 (Mock)",
+    }
+
+    mock_database["generated_content"].append(comparison_result)
+    mock_database["analytics"]["ai_generations"] += 2
+
+    return APIResponse(
+        data=comparison_result,
+        message="AI comparison completed successfully",
+        cost=comparison_result["total_cost"],
+    )
+
+
+@app.post("/ai/stories")
+async def generate_stories(data: StoriesRequest):
+    from templates.prompts import build_story_prompt
+
+    await asyncio.sleep(random.uniform(0.5, 1.5))
+
+    prompt = build_story_prompt(data.topic, data.style)
+    content, cost = await generate_ai_content(prompt)
+
+    result = {
+        "id": len(mock_database["generated_content"]) + 1,
+        "provider": PRIMARY_MODEL,
+        "content": content,
+        "type": "stories",
+        "timestamp": datetime.now().isoformat(),
+    }
+    mock_database["generated_content"].append(result)
+
+    return APIResponse(data=result, message="Instagram Stories generated successfully", cost=cost)
+
+
+@app.post("/instagram/post")
+async def instagram_post(data: InstagramPostRequest):
+    await asyncio.sleep(random.uniform(1.0, 3.0))
+
+    post_result = {
+        "post_id": f"mock_post_{random.randint(1000, 9999)}",
+        "status": "published",
+        "content": data.content,
+        "hashtags": data.hashtags,
+        "timestamp": datetime.now().isoformat(),
+        "engagement": {
+            "likes": random.randint(10, 100),
+            "comments": random.randint(1, 20),
+            "shares": random.randint(0, 10)
+        },
+        "reach": random.randint(100, 1000),
+        "url": f"https://instagram.com/p/mock_post_{random.randint(1000, 9999)}"
+    }
+
+    mock_database["instagram_posts"].append(post_result)
+    mock_database["analytics"]["instagram_posts"] += 1
+
+    return APIResponse(data=post_result, message="Instagram post published successfully")
+
+
+@app.get("/analytics")
+async def get_analytics():
     analytics = {
         **mock_database["analytics"],
         "recent_content": mock_database["generated_content"][-5:],
@@ -402,165 +376,118 @@ def get_analytics():
         "server_uptime": "Running",
         "total_cost": "$0.00 (All Mock)"
     }
+    return APIResponse(data=analytics, message="Analytics retrieved successfully")
 
-    return success_response(analytics, "Analytics retrieved successfully")
 
+# ---------------------------------------------------------------------------
 # MCP Endpoints
-@app.route('/mcp/tools', methods=['GET'])
-@security_middleware
-def get_mcp_tools():
-    """Get available MCP tools"""
+# ---------------------------------------------------------------------------
+
+@app.get("/mcp/tools")
+async def get_mcp_tools():
     try:
         tools = mcp_manager.get_available_tools()
-        return success_response(tools, "MCP tools retrieved successfully")
+        return APIResponse(data=tools, message="MCP tools retrieved successfully")
     except Exception as e:
-        logging.error(f"Failed to get MCP tools: {str(e)}", exc_info=True)
-        return error_response("Failed to retrieve MCP tools due to an internal error.")
+        logger.error(f"Failed to get MCP tools: {e}", exc_info=True)
+        return JSONResponse(
+            {"status": "error", "message": "Failed to retrieve MCP tools",
+             "timestamp": datetime.now().isoformat()},
+            status_code=500
+        )
 
-@app.route('/mcp/<tool_name>', methods=['POST'])
-@security_middleware
-def call_mcp_tool(tool_name):
-    """Call a specific MCP tool"""
+
+class MCPCallRequest(BaseModel):
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/mcp/{tool_name}")
+async def call_mcp_tool(tool_name: str, data: MCPCallRequest):
     try:
-        data = request.get_json()
-        if not data:
-            return error_response("No parameters provided")
+        result = await mcp_manager.call_tool(tool_name, data.parameters)
 
-        # Use the synchronous wrapper for MCP calls
-        result = run_mcp_tool(tool_name, data)
-
-        # Store in mock database
-        result['id'] = len(mock_database["generated_content"]) + 1
+        result["id"] = len(mock_database["generated_content"]) + 1
         mock_database["generated_content"].append(result)
 
-        return success_response(result, f"MCP tool '{tool_name}' executed successfully")
-
+        return APIResponse(
+            data=result,
+            message=f"MCP tool '{tool_name}' executed successfully",
+            cost=result.get("cost", "$0.00 (Mock)"),
+        )
     except ValueError as e:
-        logging.error(f"ValueError occurred: {str(e)}", exc_info=True)
-        return error_response("Invalid input provided.", 404)
+        logger.error(f"ValueError: {e}", exc_info=True)
+        return JSONResponse(
+            {"status": "error", "message": str(e),
+             "timestamp": datetime.now().isoformat()},
+            status_code=404
+        )
     except Exception as e:
-        logging.error(f"MCP tool execution failed: {str(e)}", exc_info=True)
-        return error_response("MCP tool execution failed due to an internal error.")
+        logger.error(f"MCP tool execution failed: {e}", exc_info=True)
+        return JSONResponse(
+            {"status": "error", "message": "MCP tool execution failed",
+             "timestamp": datetime.now().isoformat()},
+            status_code=500
+        )
 
-# Specific MCP tool endpoints for easier n8n integration
-@app.route('/mcp/filesystem', methods=['POST'])
-def mcp_filesystem():
-    """File management through MCP"""
-    return call_mcp_tool('file_manager')
 
-@app.route('/mcp/research', methods=['POST'])
-def mcp_research():
-    """Content research through MCP"""
-    return call_mcp_tool('content_research')
+@app.post("/mcp/filesystem")
+async def mcp_filesystem(data: MCPCallRequest):
+    return await call_mcp_tool("file_manager", data)
 
-@app.route('/mcp/images', methods=['POST'])
-def mcp_images():
-    """Image generation through MCP"""
-    return call_mcp_tool('image_generator')
 
-@app.route('/mcp/calendar', methods=['POST'])
-def mcp_calendar():
-    """Calendar management through MCP"""
-    return call_mcp_tool('calendar_manager')
+@app.post("/mcp/research")
+async def mcp_research(data: MCPCallRequest):
+    return await call_mcp_tool("content_research", data)
 
-@app.route('/mcp/analytics', methods=['POST'])
-def mcp_analytics():
-    """Analytics tracking through MCP"""
-    return call_mcp_tool('analytics_tracker')
 
-@app.route('/mcp/hashtags', methods=['POST'])
-def mcp_hashtags():
-    """Hashtag optimization through MCP"""
-    return call_mcp_tool('hashtag_optimizer')
+@app.post("/mcp/images")
+async def mcp_images(data: MCPCallRequest):
+    return await call_mcp_tool("image_generator", data)
 
-# Dashboard Endpoint
-@app.route('/', methods=['GET'])
-def dashboard():
-    """Simple dashboard for monitoring"""
-    dashboard_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Mock API Server Dashboard</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-            .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            .header { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-            .stats { display: flex; gap: 20px; margin: 20px 0; }
-            .stat-box { background: #3498db; color: white; padding: 20px; border-radius: 5px; flex: 1; text-align: center; }
-            .endpoints { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
-            .endpoint { background: #2ecc71; color: white; padding: 5px 10px; margin: 5px; border-radius: 3px; display: inline-block; }
-            .status { color: #27ae60; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1 class="header">🚀 Mock API Server Dashboard</h1>
-            <p class="status">Status: ✅ Running (FREE)</p>
 
-            <div class="stats">
-                <div class="stat-box">
-                    <h3>{{ analytics.total_requests }}</h3>
-                    <p>Total Requests</p>
-                </div>
-                <div class="stat-box">
-                    <h3>{{ analytics.ai_generations }}</h3>
-                    <p>AI Generations</p>
-                </div>
-                <div class="stat-box">
-                    <h3>{{ analytics.instagram_posts }}</h3>
-                    <p>Instagram Posts</p>
-                </div>
-            </div>
+@app.post("/mcp/calendar")
+async def mcp_calendar(data: MCPCallRequest):
+    return await call_mcp_tool("calendar_manager", data)
 
-            <h3>📡 AI Endpoints:</h3>
-            <div class="endpoints">
-                <span class="endpoint">POST /ai/claude/generate</span>
-                <span class="endpoint">POST /ai/openai/generate</span>
-                <span class="endpoint">POST /ai/compare</span>
-                <span class="endpoint">POST /ai/stories</span>
-            </div>
 
-            <h3>🔗 MCP Endpoints:</h3>
-            <div class="endpoints">
-                <span class="endpoint">GET /mcp/tools</span>
-                <span class="endpoint">POST /mcp/filesystem</span>
-                <span class="endpoint">POST /mcp/research</span>
-                <span class="endpoint">POST /mcp/images</span>
-                <span class="endpoint">POST /mcp/calendar</span>
-                <span class="endpoint">POST /mcp/analytics</span>
-                <span class="endpoint">POST /mcp/hashtags</span>
-            </div>
+@app.post("/mcp/analytics")
+async def mcp_analytics(data: MCPCallRequest):
+    return await call_mcp_tool("analytics_tracker", data)
 
-            <h3>📱 Instagram & System:</h3>
-            <div class="endpoints">
-                <span class="endpoint">POST /instagram/post</span>
-                <span class="endpoint">GET /analytics</span>
-                <span class="endpoint">GET /health</span>
-            </div>
 
-            <h3>💡 Usage:</h3>
-            <p>Use these endpoints in your n8n workflows to test automation without API costs!</p>
-            <p><strong>Base URL:</strong> http://localhost:8000</p>
-            <p><strong>Total Cost:</strong> $0.00 (All Mock)</p>
-        </div>
-    </body>
-    </html>
-    """
+@app.post("/mcp/hashtags")
+async def mcp_hashtags(data: MCPCallRequest):
+    return await call_mcp_tool("hashtag_optimizer", data)
 
-    return render_template_string(dashboard_html, analytics=mock_database["analytics"])
 
-if __name__ == '__main__':
-    print("🚀 Starting Mock API Server...")
-    print("📊 Dashboard: http://localhost:8000")
-    print("🔗 Health Check: http://localhost:8000/health")
-    print("💰 Cost: $0.00 (FREE)")
-    print("-" * 50)
+# ---------------------------------------------------------------------------
+# Dashboard — serves frontend SPA if built, otherwise redirects to /docs
+# ---------------------------------------------------------------------------
 
-    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-    app.run(
-        host='localhost',
-        port=8000,
-        debug=debug_mode,
-        use_reloader=False  # Prevent double startup in debug mode
-    )
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+
+@app.get("/", include_in_schema=False)
+async def dashboard():
+    index = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(index):
+        return FileResponse(index)
+    return JSONResponse({
+        "message": "Frontend not built. Run `cd frontend && npm run build` or `npm run dev`.",
+        "docs": "http://localhost:8000/docs",
+        "health": "http://localhost:8000/health",
+    })
+
+if os.path.isdir(FRONTEND_DIST):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
+    app.mount("/favicon.ico", StaticFiles(directory=FRONTEND_DIST), name="favicon")
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint (for direct execution, otherwise use uvicorn)
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+    debug = os.getenv("FASTAPI_DEBUG", "false").lower() == "true"
+    uvicorn.run("mock_api_server:app", host="localhost", port=8000, reload=debug)
